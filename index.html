@@ -1,0 +1,1244 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>LC Command Center</title>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --bg:        #0f172a;
+    --surface:   #1e293b;
+    --border:    #334155;
+    --text:      #f1f5f9;
+    --muted:     #94a3b8;
+    --biz:       #3b82f6;
+    --biz-dark:  #1d4ed8;
+    --per:       #10b981;
+    --per-dark:  #059669;
+    --danger:    #ef4444;
+    --warn:      #f59e0b;
+  }
+
+  body { font-family: 'Segoe UI', sans-serif; background: var(--bg); color: var(--text); display: flex; height: 100vh; overflow: hidden; }
+
+  /* ── SIDEBAR ───────────────────────────────────────────── */
+  #sidebar {
+    width: 240px; min-width: 240px; background: var(--surface);
+    border-right: 1px solid var(--border); display: flex; flex-direction: column;
+    padding: 0; overflow-y: auto;
+  }
+  #sidebar-header { padding: 20px 16px 12px; border-bottom: 1px solid var(--border); }
+  #sidebar-header h1 { font-size: 14px; font-weight: 700; color: var(--text); letter-spacing: .5px; }
+  #sidebar-header p  { font-size: 11px; color: var(--muted); margin-top: 2px; }
+
+  /* mode toggle */
+  #mode-toggle { display: flex; margin: 12px 12px 0; border-radius: 8px; overflow: hidden; border: 1px solid var(--border); }
+  #mode-toggle button {
+    flex: 1; padding: 7px 4px; font-size: 11px; font-weight: 600; border: none;
+    cursor: pointer; transition: background .2s, color .2s; background: transparent; color: var(--muted);
+  }
+  #mode-toggle button.active-biz { background: var(--biz);   color: #fff; }
+  #mode-toggle button.active-per { background: var(--per);   color: #fff; }
+
+  /* nav sections */
+  .nav-group { padding: 12px 0 4px; }
+  .nav-label { font-size: 10px; font-weight: 700; color: var(--muted); letter-spacing: 1px; padding: 0 16px 6px; text-transform: uppercase; }
+  .nav-item {
+    display: flex; align-items: center; gap: 10px; padding: 9px 16px;
+    font-size: 13px; color: var(--muted); cursor: pointer;
+    border-left: 3px solid transparent; transition: all .15s;
+  }
+  .nav-item:hover { background: rgba(255,255,255,.04); color: var(--text); }
+  .nav-item.active { color: var(--text); background: rgba(255,255,255,.06); }
+  .nav-item.active-biz { border-left-color: var(--biz); color: var(--biz); }
+  .nav-item.active-per { border-left-color: var(--per); color: var(--per); }
+  .nav-icon { font-size: 16px; width: 20px; text-align: center; }
+
+  /* ── MAIN CONTENT ──────────────────────────────────────── */
+  #main { flex: 1; display: flex; flex-direction: column; overflow: hidden; }
+
+  #topbar {
+    background: var(--surface); border-bottom: 1px solid var(--border);
+    padding: 14px 24px; display: flex; align-items: center; justify-content: space-between;
+  }
+  #topbar h2 { font-size: 18px; font-weight: 700; }
+  #topbar .date { font-size: 12px; color: var(--muted); }
+
+  #content { flex: 1; overflow-y: auto; padding: 24px; }
+
+  /* section pages */
+  .section-page { display: none; }
+  .section-page.active { display: block; }
+
+  /* cards */
+  .card {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 12px; padding: 20px; margin-bottom: 20px;
+  }
+  .card h3 { font-size: 14px; font-weight: 600; margin-bottom: 16px; color: var(--muted); text-transform: uppercase; letter-spacing: .5px; }
+
+  .stats-row { display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 12px; margin-bottom: 20px; }
+  .stat-card {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 10px; padding: 16px; text-align: center;
+  }
+  .stat-card .val { font-size: 24px; font-weight: 700; }
+  .stat-card .lbl { font-size: 11px; color: var(--muted); margin-top: 4px; }
+  .stat-biz .val { color: var(--biz); }
+  .stat-per .val { color: var(--per); }
+
+  /* forms */
+  .form-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 12px; }
+  .form-group { display: flex; flex-direction: column; gap: 6px; }
+  .form-group.full { grid-column: 1 / -1; }
+  label { font-size: 12px; color: var(--muted); font-weight: 500; }
+  input, select, textarea {
+    background: var(--bg); border: 1px solid var(--border); border-radius: 8px;
+    padding: 9px 12px; color: var(--text); font-size: 13px; outline: none;
+    transition: border-color .2s; font-family: inherit;
+  }
+  input:focus, select:focus, textarea:focus { border-color: var(--biz); }
+  textarea { resize: vertical; min-height: 80px; }
+  select option { background: var(--surface); }
+
+  .btn {
+    padding: 9px 20px; border-radius: 8px; border: none; font-size: 13px;
+    font-weight: 600; cursor: pointer; transition: opacity .2s;
+  }
+  .btn:hover { opacity: .85; }
+  .btn-biz { background: var(--biz); color: #fff; }
+  .btn-per { background: var(--per); color: #fff; }
+  .btn-danger { background: var(--danger); color: #fff; font-size: 11px; padding: 5px 10px; }
+  .btn-row { display: flex; gap: 10px; margin-top: 16px; align-items: center; }
+
+  /* tables */
+  .table-wrap { overflow-x: auto; margin-top: 8px; }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  th { text-align: left; padding: 10px 12px; font-size: 11px; color: var(--muted); font-weight: 600; text-transform: uppercase; border-bottom: 1px solid var(--border); }
+  td { padding: 10px 12px; border-bottom: 1px solid rgba(51,65,85,.5); vertical-align: top; }
+  tr:last-child td { border-bottom: none; }
+  tr:hover td { background: rgba(255,255,255,.02); }
+
+  /* badges */
+  .badge { display: inline-block; padding: 2px 8px; border-radius: 20px; font-size: 11px; font-weight: 600; }
+  .badge-green  { background: rgba(16,185,129,.15); color: var(--per); }
+  .badge-blue   { background: rgba(59,130,246,.15); color: var(--biz); }
+  .badge-yellow { background: rgba(245,158,11,.15);  color: var(--warn); }
+  .badge-red    { background: rgba(239,68,68,.15);   color: var(--danger); }
+
+  /* mood slider */
+  .slider-wrap { display: flex; align-items: center; gap: 12px; }
+  input[type="range"] { flex: 1; accent-color: var(--per); }
+  .slider-val { font-size: 20px; font-weight: 700; color: var(--per); min-width: 28px; text-align: center; }
+
+  /* empty state */
+  .empty { text-align: center; padding: 40px; color: var(--muted); font-size: 14px; }
+
+  /* dashboard overview */
+  .overview-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 16px; }
+  .overview-card {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 12px; padding: 20px; cursor: pointer; transition: border-color .2s;
+  }
+  .overview-card:hover { border-color: var(--biz); }
+  .overview-card .oc-icon { font-size: 28px; margin-bottom: 10px; }
+  .overview-card .oc-title { font-size: 15px; font-weight: 700; margin-bottom: 4px; }
+  .overview-card .oc-desc { font-size: 12px; color: var(--muted); }
+
+  .hidden { display: none !important; }
+</style>
+</head>
+<body>
+
+<!-- ── SIDEBAR ──────────────────────────────────────────────────────────── -->
+<nav id="sidebar">
+  <div id="sidebar-header">
+    <h1>LC Command Center</h1>
+    <p>Logical Coders + Anél</p>
+  </div>
+
+  <div id="mode-toggle">
+    <button id="btn-biz" onclick="setMode('biz')" class="active-biz">💼 Business</button>
+    <button id="btn-per" onclick="setMode('per')">🌿 Personal</button>
+  </div>
+
+  <!-- Business nav -->
+  <div id="nav-biz" class="nav-group">
+    <div class="nav-label">Logical Coders OS</div>
+    <div class="nav-item active active-biz" onclick="showSection('biz-home')" data-section="biz-home">
+      <span class="nav-icon">🏠</span> Dashboard
+    </div>
+    <div class="nav-item" onclick="showSection('finances')" data-section="finances">
+      <span class="nav-icon">💰</span> Finances
+    </div>
+    <div class="nav-item" onclick="showSection('pipeline')" data-section="pipeline">
+      <span class="nav-icon">🎯</span> Client Pipeline
+    </div>
+    <div class="nav-item" onclick="showSection('events')" data-section="events">
+      <span class="nav-icon">📅</span> Events
+    </div>
+    <div class="nav-item" onclick="showSection('biz-goals')" data-section="biz-goals">
+      <span class="nav-icon">🚀</span> Quarterly Goals
+    </div>
+  </div>
+
+  <!-- Personal nav -->
+  <div id="nav-per" class="nav-group hidden">
+    <div class="nav-label">Anél's Personal Assistant</div>
+    <div class="nav-item" onclick="showSection('per-home')" data-section="per-home">
+      <span class="nav-icon">🏠</span> Dashboard
+    </div>
+    <div class="nav-item" onclick="showSection('mood')" data-section="mood">
+      <span class="nav-icon">😊</span> Mood
+    </div>
+    <div class="nav-item" onclick="showSection('nutrition')" data-section="nutrition">
+      <span class="nav-icon">🥗</span> Nutrition
+    </div>
+    <div class="nav-item" onclick="showSection('fitness')" data-section="fitness">
+      <span class="nav-icon">💪</span> Fitness
+    </div>
+    <div class="nav-item" onclick="showSection('time-log')" data-section="time-log">
+      <span class="nav-icon">⏱️</span> Time Log
+    </div>
+    <div class="nav-item" onclick="showSection('per-goals')" data-section="per-goals">
+      <span class="nav-icon">⭐</span> Personal Goals
+    </div>
+  </div>
+</nav>
+
+<!-- ── MAIN ─────────────────────────────────────────────────────────────── -->
+<div id="main">
+  <div id="topbar">
+    <h2 id="page-title">Dashboard</h2>
+    <span class="date" id="today-date"></span>
+  </div>
+  <div id="content">
+
+    <!-- ═══ BIZ HOME ═══════════════════════════════════════════════════ -->
+    <div class="section-page active" id="page-biz-home">
+      <div class="stats-row" id="biz-stats">
+        <div class="stat-card stat-biz"><div class="val" id="stat-revenue">—</div><div class="lbl">Total Revenue</div></div>
+        <div class="stat-card stat-biz"><div class="val" id="stat-expenses">—</div><div class="lbl">Total Expenses</div></div>
+        <div class="stat-card stat-biz"><div class="val" id="stat-leads">—</div><div class="lbl">Active Leads</div></div>
+        <div class="stat-card stat-biz"><div class="val" id="stat-events">—</div><div class="lbl">Events Attended</div></div>
+      </div>
+      <div class="overview-grid">
+        <div class="overview-card" onclick="showSection('finances')">
+          <div class="oc-icon">💰</div>
+          <div class="oc-title">Finances</div>
+          <div class="oc-desc">Track income, expenses and cash flow</div>
+        </div>
+        <div class="overview-card" onclick="showSection('pipeline')">
+          <div class="oc-icon">🎯</div>
+          <div class="oc-title">Client Pipeline</div>
+          <div class="oc-desc">Manage leads, prospects and follow-ups</div>
+        </div>
+        <div class="overview-card" onclick="showSection('events')">
+          <div class="oc-icon">📅</div>
+          <div class="oc-title">Events</div>
+          <div class="oc-desc">Log networking events and conferences</div>
+        </div>
+        <div class="overview-card" onclick="showSection('biz-goals')">
+          <div class="oc-icon">🚀</div>
+          <div class="oc-title">Quarterly Goals</div>
+          <div class="oc-desc">Set and track business milestones</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ═══ FINANCES ════════════════════════════════════════════════════ -->
+    <div class="section-page" id="page-finances">
+      <div class="card">
+        <h3>Log Transaction</h3>
+        <div class="form-grid">
+          <div class="form-group">
+            <label>Date</label>
+            <input type="date" id="fin-date">
+          </div>
+          <div class="form-group">
+            <label>Type</label>
+            <select id="fin-type">
+              <option value="income">Income</option>
+              <option value="expense">Expense</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label>Category</label>
+            <select id="fin-cat">
+              <option>Consulting</option>
+              <option>Subscription</option>
+              <option>Software</option>
+              <option>Marketing</option>
+              <option>Travel</option>
+              <option>Equipment</option>
+              <option>Other</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label>Amount ($)</label>
+            <input type="number" id="fin-amount" placeholder="0.00" step="0.01">
+          </div>
+          <div class="form-group full">
+            <label>Description</label>
+            <input type="text" id="fin-desc" placeholder="Brief description">
+          </div>
+        </div>
+        <div class="btn-row">
+          <button class="btn btn-biz" onclick="saveFinance()">+ Add Transaction</button>
+        </div>
+      </div>
+      <div class="card">
+        <h3>Transaction History</h3>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Date</th><th>Type</th><th>Category</th><th>Amount</th><th>Description</th><th></th></tr></thead>
+            <tbody id="fin-table"><tr><td colspan="6" class="empty">No transactions yet</td></tr></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- ═══ CLIENT PIPELINE ═════════════════════════════════════════════ -->
+    <div class="section-page" id="page-pipeline">
+      <div class="card">
+        <h3>Add Lead / Prospect</h3>
+        <div class="form-grid">
+          <div class="form-group">
+            <label>Date</label>
+            <input type="date" id="pip-date">
+          </div>
+          <div class="form-group">
+            <label>Company / Organization</label>
+            <input type="text" id="pip-company" placeholder="Company name">
+          </div>
+          <div class="form-group">
+            <label>Contact Name</label>
+            <input type="text" id="pip-contact" placeholder="Contact person">
+          </div>
+          <div class="form-group">
+            <label>Type</label>
+            <select id="pip-type">
+              <option value="client">Potential Client</option>
+              <option value="partner">Partner</option>
+              <option value="referral">Referral</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label>Status</label>
+            <select id="pip-status">
+              <option value="new">New</option>
+              <option value="contacted">Contacted</option>
+              <option value="proposal">Proposal Sent</option>
+              <option value="negotiating">Negotiating</option>
+              <option value="won">Won</option>
+              <option value="lost">Lost</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label>Follow-up Date</label>
+            <input type="date" id="pip-followup">
+          </div>
+          <div class="form-group full">
+            <label>Notes</label>
+            <textarea id="pip-notes" placeholder="Details about this lead..."></textarea>
+          </div>
+        </div>
+        <div class="btn-row">
+          <button class="btn btn-biz" onclick="savePipeline()">+ Add Lead</button>
+        </div>
+      </div>
+      <div class="card">
+        <h3>Pipeline</h3>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Date</th><th>Company</th><th>Contact</th><th>Type</th><th>Status</th><th>Follow-up</th><th></th></tr></thead>
+            <tbody id="pip-table"><tr><td colspan="7" class="empty">No leads yet</td></tr></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- ═══ EVENTS ══════════════════════════════════════════════════════ -->
+    <div class="section-page" id="page-events">
+      <div class="card">
+        <h3>Log Event</h3>
+        <div class="form-grid">
+          <div class="form-group">
+            <label>Date</label>
+            <input type="date" id="evt-date">
+          </div>
+          <div class="form-group">
+            <label>Event Name</label>
+            <input type="text" id="evt-name" placeholder="Event name">
+          </div>
+          <div class="form-group">
+            <label>Location</label>
+            <input type="text" id="evt-location" placeholder="City or Online">
+          </div>
+          <div class="form-group">
+            <label>Type</label>
+            <select id="evt-type">
+              <option>Networking</option>
+              <option>Conference</option>
+              <option>Workshop</option>
+              <option>Webinar</option>
+              <option>Pitch Event</option>
+              <option>Accelerator</option>
+              <option>Other</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label>Contacts Made</label>
+            <input type="number" id="evt-contacts" placeholder="0" min="0">
+          </div>
+          <div class="form-group full">
+            <label>Notes / Key Takeaways</label>
+            <textarea id="evt-notes" placeholder="What happened, who you met, follow-ups needed..."></textarea>
+          </div>
+        </div>
+        <div class="btn-row">
+          <button class="btn btn-biz" onclick="saveEvent()">+ Log Event</button>
+        </div>
+      </div>
+      <div class="card">
+        <h3>Event History</h3>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Date</th><th>Event</th><th>Location</th><th>Type</th><th>Contacts</th><th>Notes</th><th></th></tr></thead>
+            <tbody id="evt-table"><tr><td colspan="7" class="empty">No events logged yet</td></tr></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- ═══ BIZ GOALS ═══════════════════════════════════════════════════ -->
+    <div class="section-page" id="page-biz-goals">
+      <div class="card">
+        <h3>Add Business Goal</h3>
+        <div class="form-grid">
+          <div class="form-group">
+            <label>Quarter</label>
+            <select id="bg-quarter">
+              <option value="1">Q1 (Jan–Mar)</option>
+              <option value="2">Q2 (Apr–Jun)</option>
+              <option value="3">Q3 (Jul–Sep)</option>
+              <option value="4">Q4 (Oct–Dec)</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label>Year</label>
+            <input type="number" id="bg-year" value="2026" min="2024" max="2030">
+          </div>
+          <div class="form-group">
+            <label>Status</label>
+            <select id="bg-status">
+              <option value="not_started">Not Started</option>
+              <option value="in_progress">In Progress</option>
+              <option value="completed">Completed</option>
+              <option value="paused">Paused</option>
+            </select>
+          </div>
+          <div class="form-group full">
+            <label>Goal</label>
+            <input type="text" id="bg-goal" placeholder="Describe the goal...">
+          </div>
+          <div class="form-group full">
+            <label>Progress Notes</label>
+            <textarea id="bg-notes" placeholder="Updates, blockers, next steps..."></textarea>
+          </div>
+        </div>
+        <div class="btn-row">
+          <button class="btn btn-biz" onclick="saveBizGoal()">+ Add Goal</button>
+        </div>
+      </div>
+      <div class="card">
+        <h3>Goals Tracker</h3>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Quarter</th><th>Year</th><th>Goal</th><th>Status</th><th>Notes</th><th></th></tr></thead>
+            <tbody id="bg-table"><tr><td colspan="6" class="empty">No goals added yet</td></tr></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- ═══ PER HOME ════════════════════════════════════════════════════ -->
+    <div class="section-page" id="page-per-home">
+      <div class="stats-row">
+        <div class="stat-card stat-per"><div class="val" id="stat-mood">—</div><div class="lbl">Avg Mood (7d)</div></div>
+        <div class="stat-card stat-per"><div class="val" id="stat-sleep">—</div><div class="lbl">Avg Sleep (7d)</div></div>
+        <div class="stat-card stat-per"><div class="val" id="stat-workouts">—</div><div class="lbl">Workouts (30d)</div></div>
+        <div class="stat-card stat-per"><div class="val" id="stat-per-goals">—</div><div class="lbl">Goals In Progress</div></div>
+      </div>
+      <div class="overview-grid">
+        <div class="overview-card" onclick="showSection('mood')" style="border-color:rgba(16,185,129,.3)">
+          <div class="oc-icon">😊</div>
+          <div class="oc-title">Mood Tracker</div>
+          <div class="oc-desc">Daily mood, energy and sleep log</div>
+        </div>
+        <div class="overview-card" onclick="showSection('nutrition')" style="border-color:rgba(16,185,129,.3)">
+          <div class="oc-icon">🥗</div>
+          <div class="oc-title">Nutrition</div>
+          <div class="oc-desc">Meals, calories and water intake</div>
+        </div>
+        <div class="overview-card" onclick="showSection('fitness')" style="border-color:rgba(16,185,129,.3)">
+          <div class="oc-icon">💪</div>
+          <div class="oc-title">Fitness</div>
+          <div class="oc-desc">Workouts, duration and exercises</div>
+        </div>
+        <div class="overview-card" onclick="showSection('time-log')" style="border-color:rgba(16,185,129,.3)">
+          <div class="oc-icon">⏱️</div>
+          <div class="oc-title">Time Log</div>
+          <div class="oc-desc">Track how you spend your time</div>
+        </div>
+        <div class="overview-card" onclick="showSection('per-goals')" style="border-color:rgba(16,185,129,.3)">
+          <div class="oc-icon">⭐</div>
+          <div class="oc-title">Personal Goals</div>
+          <div class="oc-desc">Quarterly personal milestones</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ═══ MOOD ═════════════════════════════════════════════════════════ -->
+    <div class="section-page" id="page-mood">
+      <div class="card">
+        <h3>Log Today's Check-in</h3>
+        <div class="form-grid">
+          <div class="form-group">
+            <label>Date</label>
+            <input type="date" id="mood-date">
+          </div>
+          <div class="form-group full">
+            <label>Mood (1 = Very Low, 10 = Excellent)</label>
+            <div class="slider-wrap">
+              <input type="range" id="mood-score" min="1" max="10" value="7" oninput="document.getElementById('mood-score-val').textContent=this.value">
+              <div class="slider-val" id="mood-score-val">7</div>
+            </div>
+          </div>
+          <div class="form-group full">
+            <label>Energy Level (1–10)</label>
+            <div class="slider-wrap">
+              <input type="range" id="mood-energy" min="1" max="10" value="7" oninput="document.getElementById('mood-energy-val').textContent=this.value">
+              <div class="slider-val" id="mood-energy-val">7</div>
+            </div>
+          </div>
+          <div class="form-group">
+            <label>Sleep (hours)</label>
+            <input type="number" id="mood-sleep" placeholder="7.5" step="0.5" min="0" max="24">
+          </div>
+          <div class="form-group full">
+            <label>Notes / How are you feeling?</label>
+            <textarea id="mood-notes" placeholder="Anything on your mind today..."></textarea>
+          </div>
+        </div>
+        <div class="btn-row">
+          <button class="btn btn-per" onclick="saveMood()">+ Log Check-in</button>
+        </div>
+      </div>
+      <div class="card">
+        <h3>Check-in History</h3>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Date</th><th>Mood</th><th>Energy</th><th>Sleep</th><th>Notes</th><th></th></tr></thead>
+            <tbody id="mood-table"><tr><td colspan="6" class="empty">No check-ins yet</td></tr></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- ═══ NUTRITION ════════════════════════════════════════════════════ -->
+    <div class="section-page" id="page-nutrition">
+      <div class="card">
+        <h3>Log Meal</h3>
+        <div class="form-grid">
+          <div class="form-group">
+            <label>Date</label>
+            <input type="date" id="nut-date">
+          </div>
+          <div class="form-group">
+            <label>Meal</label>
+            <select id="nut-meal">
+              <option>Breakfast</option>
+              <option>Lunch</option>
+              <option>Dinner</option>
+              <option>Snack</option>
+            </select>
+          </div>
+          <div class="form-group full">
+            <label>Food / Description</label>
+            <input type="text" id="nut-food" placeholder="What did you eat?">
+          </div>
+          <div class="form-group">
+            <label>Calories (approx)</label>
+            <input type="number" id="nut-cal" placeholder="0">
+          </div>
+          <div class="form-group">
+            <label>Protein (g)</label>
+            <input type="number" id="nut-protein" placeholder="0">
+          </div>
+          <div class="form-group">
+            <label>Water (oz)</label>
+            <input type="number" id="nut-water" placeholder="0">
+          </div>
+          <div class="form-group full">
+            <label>Notes</label>
+            <textarea id="nut-notes" placeholder="How did you feel after? Any cravings?"></textarea>
+          </div>
+        </div>
+        <div class="btn-row">
+          <button class="btn btn-per" onclick="saveNutrition()">+ Log Meal</button>
+        </div>
+      </div>
+      <div class="card">
+        <h3>Nutrition Log</h3>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Date</th><th>Meal</th><th>Food</th><th>Calories</th><th>Protein</th><th>Water</th><th></th></tr></thead>
+            <tbody id="nut-table"><tr><td colspan="7" class="empty">No meals logged yet</td></tr></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- ═══ FITNESS ══════════════════════════════════════════════════════ -->
+    <div class="section-page" id="page-fitness">
+      <div class="card">
+        <h3>Log Workout</h3>
+        <div class="form-grid">
+          <div class="form-group">
+            <label>Date</label>
+            <input type="date" id="fit-date">
+          </div>
+          <div class="form-group">
+            <label>Workout Type</label>
+            <select id="fit-type">
+              <option>Strength Training</option>
+              <option>Cardio</option>
+              <option>Yoga</option>
+              <option>Walking</option>
+              <option>Running</option>
+              <option>HIIT</option>
+              <option>Pilates</option>
+              <option>Cycling</option>
+              <option>Swimming</option>
+              <option>Other</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label>Duration (minutes)</label>
+            <input type="number" id="fit-duration" placeholder="30">
+          </div>
+          <div class="form-group full">
+            <label>Exercises / Activities</label>
+            <input type="text" id="fit-exercises" placeholder="e.g. Squats, Bench Press, 3 sets each">
+          </div>
+          <div class="form-group full">
+            <label>Notes</label>
+            <textarea id="fit-notes" placeholder="How did it feel? PRs? Struggles?"></textarea>
+          </div>
+        </div>
+        <div class="btn-row">
+          <button class="btn btn-per" onclick="saveFitness()">+ Log Workout</button>
+        </div>
+      </div>
+      <div class="card">
+        <h3>Workout History</h3>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Date</th><th>Type</th><th>Duration</th><th>Exercises</th><th>Notes</th><th></th></tr></thead>
+            <tbody id="fit-table"><tr><td colspan="6" class="empty">No workouts logged yet</td></tr></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- ═══ TIME LOG ═════════════════════════════════════════════════════ -->
+    <div class="section-page" id="page-time-log">
+      <div class="card">
+        <h3>Log Time Block</h3>
+        <div class="form-grid">
+          <div class="form-group">
+            <label>Date</label>
+            <input type="date" id="time-date">
+          </div>
+          <div class="form-group">
+            <label>Category</label>
+            <select id="time-cat">
+              <option>Deep Work</option>
+              <option>Client Work</option>
+              <option>Admin</option>
+              <option>Learning</option>
+              <option>Networking</option>
+              <option>Exercise</option>
+              <option>Personal</option>
+              <option>Rest</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label>Hours</label>
+            <input type="number" id="time-hours" placeholder="1.5" step="0.25" min="0.25">
+          </div>
+          <div class="form-group full">
+            <label>Task / Activity</label>
+            <input type="text" id="time-task" placeholder="What did you work on?">
+          </div>
+          <div class="form-group full">
+            <label>Notes</label>
+            <textarea id="time-notes" placeholder="Outcome, blockers, reflections..."></textarea>
+          </div>
+        </div>
+        <div class="btn-row">
+          <button class="btn btn-per" onclick="saveTime()">+ Log Time</button>
+        </div>
+      </div>
+      <div class="card">
+        <h3>Time Log</h3>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Date</th><th>Category</th><th>Hours</th><th>Task</th><th>Notes</th><th></th></tr></thead>
+            <tbody id="time-table"><tr><td colspan="6" class="empty">No time logged yet</td></tr></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- ═══ PERSONAL GOALS ═══════════════════════════════════════════════ -->
+    <div class="section-page" id="page-per-goals">
+      <div class="card">
+        <h3>Add Personal Goal</h3>
+        <div class="form-grid">
+          <div class="form-group">
+            <label>Quarter</label>
+            <select id="pg-quarter">
+              <option value="1">Q1 (Jan–Mar)</option>
+              <option value="2">Q2 (Apr–Jun)</option>
+              <option value="3">Q3 (Jul–Sep)</option>
+              <option value="4">Q4 (Oct–Dec)</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label>Year</label>
+            <input type="number" id="pg-year" value="2026" min="2024" max="2030">
+          </div>
+          <div class="form-group">
+            <label>Status</label>
+            <select id="pg-status">
+              <option value="not_started">Not Started</option>
+              <option value="in_progress">In Progress</option>
+              <option value="completed">Completed</option>
+              <option value="paused">Paused</option>
+            </select>
+          </div>
+          <div class="form-group full">
+            <label>Goal</label>
+            <input type="text" id="pg-goal" placeholder="What do you want to achieve?">
+          </div>
+          <div class="form-group full">
+            <label>Progress Notes</label>
+            <textarea id="pg-notes" placeholder="Updates, reflections, next steps..."></textarea>
+          </div>
+        </div>
+        <div class="btn-row">
+          <button class="btn btn-per" onclick="savePerGoal()">+ Add Goal</button>
+        </div>
+      </div>
+      <div class="card">
+        <h3>Goals Tracker</h3>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Quarter</th><th>Year</th><th>Goal</th><th>Status</th><th>Notes</th><th></th></tr></thead>
+            <tbody id="pg-table"><tr><td colspan="6" class="empty">No personal goals yet</td></tr></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+  </div><!-- /content -->
+</div><!-- /main -->
+
+<script>
+// ── CONFIG ────────────────────────────────────────────────────────────────
+const SUPABASE_URL  = 'https://qeywcnioswncspjfauxd.supabase.co';
+const SUPABASE_ANON = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InFleXdjbmlvc3duY3NwamZhdXhkIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzkyMTQ1MTYsImV4cCI6MjA5NDc5MDUxNn0.bQyP37hQaNIldNwJd03vtZVWHk10C5-goIm5bcR2ppE';
+
+const db = supabase.createClient(SUPABASE_URL, SUPABASE_ANON);
+
+// ── DB HELPERS ────────────────────────────────────────────────────────────
+const TABLE = {
+  'finances':'finances','pipeline':'pipeline','events':'events',
+  'biz-goals':'biz_goals','mood':'mood','nutrition':'nutrition',
+  'fitness':'fitness','time-log':'time_log','per-goals':'per_goals'
+};
+
+const store = {
+  get: async (k) => {
+    const { data, error } = await db.from(TABLE[k]).select('*').order('created_at', { ascending: false });
+    if (error) { console.error(error); return []; }
+    return data || [];
+  },
+  add: async (k, item) => {
+    const { error } = await db.from(TABLE[k]).insert(item);
+    if (error) { console.error(error); alert('Save failed: ' + error.message); }
+  },
+  del: async (k, id) => {
+    const { error } = await db.from(TABLE[k]).delete().eq('id', id);
+    if (error) { console.error(error); alert('Delete failed: ' + error.message); }
+  },
+};
+
+// ── INIT ──────────────────────────────────────────────────────────────────
+document.getElementById('today-date').textContent =
+  new Date().toLocaleDateString('en-US', { weekday:'long', year:'numeric', month:'long', day:'numeric' });
+
+// set today as default for all date inputs
+document.querySelectorAll('input[type="date"]').forEach(el => {
+  el.value = new Date().toISOString().split('T')[0];
+});
+
+let currentMode = 'biz';
+let currentSection = 'biz-home';
+
+// ── MODE TOGGLE ───────────────────────────────────────────────────────────
+function setMode(mode) {
+  currentMode = mode;
+  document.getElementById('nav-biz').classList.toggle('hidden', mode !== 'biz');
+  document.getElementById('nav-per').classList.toggle('hidden', mode !== 'per');
+  document.getElementById('btn-biz').className = mode === 'biz' ? 'active-biz' : '';
+  document.getElementById('btn-per').className = mode === 'per' ? 'active-per' : '';
+  showSection(mode === 'biz' ? 'biz-home' : 'per-home');
+}
+
+// ── NAVIGATION ────────────────────────────────────────────────────────────
+function showSection(name) {
+  currentSection = name;
+  document.querySelectorAll('.section-page').forEach(p => p.classList.remove('active'));
+  document.getElementById('page-' + name).classList.add('active');
+
+  document.querySelectorAll('.nav-item').forEach(el => {
+    el.classList.remove('active', 'active-biz', 'active-per');
+    if (el.dataset.section === name) {
+      el.classList.add('active', currentMode === 'biz' ? 'active-biz' : 'active-per');
+    }
+  });
+
+  const titles = {
+    'biz-home':'Dashboard', 'finances':'Finances', 'pipeline':'Client Pipeline',
+    'events':'Events', 'biz-goals':'Quarterly Goals — Business',
+    'per-home':'Dashboard', 'mood':'Mood Tracker', 'nutrition':'Nutrition Log',
+    'fitness':'Fitness Log', 'time-log':'Time Log', 'per-goals':'Quarterly Goals — Personal'
+  };
+  document.getElementById('page-title').textContent = titles[name] || name;
+
+  loadSection(name);
+}
+
+// ── LOAD SECTIONS ─────────────────────────────────────────────────────────
+function loadSection(name) {
+  if (name === 'biz-home')  loadBizStats();
+  if (name === 'per-home')  loadPerStats();
+  if (name === 'finances')  renderFinances();
+  if (name === 'pipeline')  renderPipeline();
+  if (name === 'events')    renderEvents();
+  if (name === 'biz-goals') renderBizGoals();
+  if (name === 'mood')      renderMood();
+  if (name === 'nutrition') renderNutrition();
+  if (name === 'fitness')   renderFitness();
+  if (name === 'time-log')  renderTime();
+  if (name === 'per-goals') renderPerGoals();
+}
+
+// ── BIZ STATS ─────────────────────────────────────────────────────────────
+function loadBizStats() {
+  const fins  = store.get('finances');
+  const rev   = fins.filter(f=>f.type==='income').reduce((s,f)=>s+parseFloat(f.amount||0),0);
+  const exp   = fins.filter(f=>f.type==='expense').reduce((s,f)=>s+parseFloat(f.amount||0),0);
+  const leads = store.get('pipeline').filter(p=>!['won','lost'].includes(p.status)).length;
+  const evts  = store.get('events').length;
+  document.getElementById('stat-revenue').textContent  = '$'+rev.toFixed(0);
+  document.getElementById('stat-expenses').textContent = '$'+exp.toFixed(0);
+  document.getElementById('stat-leads').textContent    = leads;
+  document.getElementById('stat-events').textContent   = evts;
+}
+
+// ── PER STATS ─────────────────────────────────────────────────────────────
+function loadPerStats() {
+  const moods = store.get('mood').slice(0,7);
+  const avgMood = moods.length ? (moods.reduce((s,m)=>s+parseInt(m.score||0),0)/moods.length).toFixed(1) : '—';
+  const avgSleep = moods.length ? (moods.reduce((s,m)=>s+parseFloat(m.sleep||0),0)/moods.length).toFixed(1) : '—';
+  const fits = store.get('fitness');
+  const thirty = new Date(); thirty.setDate(thirty.getDate()-30);
+  const workouts = fits.filter(f => new Date(f.date) >= thirty).length;
+  const pgInProgress = store.get('per-goals').filter(g=>g.status==='in_progress').length;
+  document.getElementById('stat-mood').textContent      = avgMood;
+  document.getElementById('stat-sleep').textContent     = avgSleep + 'h';
+  document.getElementById('stat-workouts').textContent  = workouts;
+  document.getElementById('stat-per-goals').textContent = pgInProgress;
+}
+
+// ── HELPERS ───────────────────────────────────────────────────────────────
+const statusBadge = {
+  new:'badge-blue', contacted:'badge-yellow', proposal:'badge-yellow',
+  negotiating:'badge-yellow', won:'badge-green', lost:'badge-red',
+  in_progress:'badge-yellow', completed:'badge-green', not_started:'badge-red', paused:'badge-red'
+};
+function badge(val, map) {
+  const cls = map[val] || 'badge-blue';
+  return `<span class="badge ${cls}">${(val||'').replace('_',' ')}</span>`;
+}
+function delBtn(store_key, id, render_fn) {
+  return `<button class="btn btn-danger" onclick="del('${store_key}','${id}','${render_fn}')">✕</button>`;
+}
+async function del(key, id, renderFn) {
+  await store.del(key, id);
+  await window[renderFn]();
+  if (['finances','pipeline','events'].includes(key)) loadBizStats();
+  if (['mood','fitness','per-goals'].includes(key))  loadPerStats();
+}
+function loading(tbId, cols) {
+  document.getElementById(tbId).innerHTML = `<tr><td colspan="${cols}" class="empty">Loading...</td></tr>`;
+}
+
+// ── BIZ STATS ─────────────────────────────────────────────────────────────
+async function loadBizStats() {
+  const fins  = await store.get('finances');
+  const rev   = fins.filter(f=>f.type==='income').reduce((s,f)=>s+parseFloat(f.amount||0),0);
+  const exp   = fins.filter(f=>f.type==='expense').reduce((s,f)=>s+parseFloat(f.amount||0),0);
+  const pipe  = await store.get('pipeline');
+  const leads = pipe.filter(p=>!['won','lost'].includes(p.status)).length;
+  const evts  = (await store.get('events')).length;
+  document.getElementById('stat-revenue').textContent  = '$'+rev.toFixed(0);
+  document.getElementById('stat-expenses').textContent = '$'+exp.toFixed(0);
+  document.getElementById('stat-leads').textContent    = leads;
+  document.getElementById('stat-events').textContent   = evts;
+}
+
+// ── PER STATS ─────────────────────────────────────────────────────────────
+async function loadPerStats() {
+  const moods = (await store.get('mood')).slice(0,7);
+  const avgMood  = moods.length ? (moods.reduce((s,m)=>s+parseInt(m.score||0),0)/moods.length).toFixed(1) : '—';
+  const avgSleep = moods.length ? (moods.reduce((s,m)=>s+parseFloat(m.sleep||0),0)/moods.length).toFixed(1) : '—';
+  const fits  = await store.get('fitness');
+  const thirty = new Date(); thirty.setDate(thirty.getDate()-30);
+  const workouts = fits.filter(f => new Date(f.date) >= thirty).length;
+  const pgInProgress = (await store.get('per-goals')).filter(g=>g.status==='in_progress').length;
+  document.getElementById('stat-mood').textContent      = avgMood;
+  document.getElementById('stat-sleep').textContent     = avgSleep !== '—' ? avgSleep+'h' : '—';
+  document.getElementById('stat-workouts').textContent  = workouts;
+  document.getElementById('stat-per-goals').textContent = pgInProgress;
+}
+
+// ── FINANCES ──────────────────────────────────────────────────────────────
+async function saveFinance() {
+  const item = {
+    date: document.getElementById('fin-date').value,
+    type: document.getElementById('fin-type').value,
+    category: document.getElementById('fin-cat').value,
+    amount: document.getElementById('fin-amount').value,
+    description: document.getElementById('fin-desc').value,
+  };
+  if (!item.amount) return alert('Please enter an amount.');
+  await store.add('finances', item);
+  document.getElementById('fin-amount').value = '';
+  document.getElementById('fin-desc').value = '';
+  await renderFinances();
+  loadBizStats();
+}
+async function renderFinances() {
+  loading('fin-table', 6);
+  const rows = await store.get('finances');
+  const tb = document.getElementById('fin-table');
+  if (!rows.length) { tb.innerHTML = '<tr><td colspan="6" class="empty">No transactions yet</td></tr>'; return; }
+  tb.innerHTML = rows.map(r => `<tr>
+    <td>${r.date}</td>
+    <td>${badge(r.type, {income:'badge-green', expense:'badge-red'})}</td>
+    <td>${r.category}</td>
+    <td style="font-weight:600;color:${r.type==='income'?'var(--per)':'var(--danger)'}">$${parseFloat(r.amount).toFixed(2)}</td>
+    <td>${r.description||'—'}</td>
+    <td>${delBtn('finances',r.id,'renderFinances')}</td>
+  </tr>`).join('');
+}
+
+// ── PIPELINE ──────────────────────────────────────────────────────────────
+async function savePipeline() {
+  const item = {
+    date: document.getElementById('pip-date').value,
+    company: document.getElementById('pip-company').value,
+    contact: document.getElementById('pip-contact').value,
+    type: document.getElementById('pip-type').value,
+    status: document.getElementById('pip-status').value,
+    followup: document.getElementById('pip-followup').value || null,
+    notes: document.getElementById('pip-notes').value,
+  };
+  if (!item.company) return alert('Please enter a company name.');
+  await store.add('pipeline', item);
+  document.getElementById('pip-company').value = '';
+  document.getElementById('pip-contact').value = '';
+  document.getElementById('pip-notes').value = '';
+  await renderPipeline();
+  loadBizStats();
+}
+async function renderPipeline() {
+  loading('pip-table', 7);
+  const rows = await store.get('pipeline');
+  const tb = document.getElementById('pip-table');
+  if (!rows.length) { tb.innerHTML = '<tr><td colspan="7" class="empty">No leads yet</td></tr>'; return; }
+  tb.innerHTML = rows.map(r => `<tr>
+    <td>${r.date}</td>
+    <td style="font-weight:600">${r.company}</td>
+    <td>${r.contact||'—'}</td>
+    <td>${badge(r.type, {client:'badge-blue', partner:'badge-green', referral:'badge-yellow'})}</td>
+    <td>${badge(r.status, statusBadge)}</td>
+    <td>${r.followup||'—'}</td>
+    <td>${delBtn('pipeline',r.id,'renderPipeline')}</td>
+  </tr>`).join('');
+}
+
+// ── EVENTS ────────────────────────────────────────────────────────────────
+async function saveEvent() {
+  const item = {
+    date: document.getElementById('evt-date').value,
+    name: document.getElementById('evt-name').value,
+    location: document.getElementById('evt-location').value,
+    type: document.getElementById('evt-type').value,
+    contacts: parseInt(document.getElementById('evt-contacts').value) || 0,
+    notes: document.getElementById('evt-notes').value,
+  };
+  if (!item.name) return alert('Please enter an event name.');
+  await store.add('events', item);
+  document.getElementById('evt-name').value = '';
+  document.getElementById('evt-location').value = '';
+  document.getElementById('evt-contacts').value = '';
+  document.getElementById('evt-notes').value = '';
+  await renderEvents();
+  loadBizStats();
+}
+async function renderEvents() {
+  loading('evt-table', 7);
+  const rows = await store.get('events');
+  const tb = document.getElementById('evt-table');
+  if (!rows.length) { tb.innerHTML = '<tr><td colspan="7" class="empty">No events logged yet</td></tr>'; return; }
+  tb.innerHTML = rows.map(r => `<tr>
+    <td>${r.date}</td>
+    <td style="font-weight:600">${r.name}</td>
+    <td>${r.location||'—'}</td>
+    <td><span class="badge badge-blue">${r.type}</span></td>
+    <td style="text-align:center">${r.contacts||0}</td>
+    <td style="max-width:200px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${r.notes||'—'}</td>
+    <td>${delBtn('events',r.id,'renderEvents')}</td>
+  </tr>`).join('');
+}
+
+// ── BIZ GOALS ─────────────────────────────────────────────────────────────
+async function saveBizGoal() {
+  const item = {
+    quarter: parseInt(document.getElementById('bg-quarter').value),
+    year: parseInt(document.getElementById('bg-year').value),
+    status: document.getElementById('bg-status').value,
+    goal: document.getElementById('bg-goal').value,
+    notes: document.getElementById('bg-notes').value,
+  };
+  if (!item.goal) return alert('Please enter a goal.');
+  await store.add('biz-goals', item);
+  document.getElementById('bg-goal').value = '';
+  document.getElementById('bg-notes').value = '';
+  await renderBizGoals();
+}
+async function renderBizGoals() {
+  loading('bg-table', 6);
+  const rows = await store.get('biz-goals');
+  const tb = document.getElementById('bg-table');
+  if (!rows.length) { tb.innerHTML = '<tr><td colspan="6" class="empty">No goals added yet</td></tr>'; return; }
+  tb.innerHTML = rows.map(r => `<tr>
+    <td>Q${r.quarter}</td>
+    <td>${r.year}</td>
+    <td style="font-weight:600">${r.goal}</td>
+    <td>${badge(r.status, statusBadge)}</td>
+    <td style="max-width:200px">${r.notes||'—'}</td>
+    <td>${delBtn('biz-goals',r.id,'renderBizGoals')}</td>
+  </tr>`).join('');
+}
+
+// ── MOOD ──────────────────────────────────────────────────────────────────
+async function saveMood() {
+  const item = {
+    date: document.getElementById('mood-date').value,
+    score: parseInt(document.getElementById('mood-score').value),
+    energy: parseInt(document.getElementById('mood-energy').value),
+    sleep: parseFloat(document.getElementById('mood-sleep').value) || null,
+    notes: document.getElementById('mood-notes').value,
+  };
+  await store.add('mood', item);
+  document.getElementById('mood-sleep').value = '';
+  document.getElementById('mood-notes').value = '';
+  await renderMood();
+  loadPerStats();
+}
+const moodEmoji = s => s>=9?'😄':s>=7?'😊':s>=5?'😐':s>=3?'😔':'😢';
+async function renderMood() {
+  loading('mood-table', 6);
+  const rows = await store.get('mood');
+  const tb = document.getElementById('mood-table');
+  if (!rows.length) { tb.innerHTML = '<tr><td colspan="6" class="empty">No check-ins yet</td></tr>'; return; }
+  tb.innerHTML = rows.map(r => `<tr>
+    <td>${r.date}</td>
+    <td style="font-size:18px">${moodEmoji(parseInt(r.score))} <strong>${r.score}/10</strong></td>
+    <td>${r.energy}/10</td>
+    <td>${r.sleep?r.sleep+'h':'—'}</td>
+    <td style="max-width:200px">${r.notes||'—'}</td>
+    <td>${delBtn('mood',r.id,'renderMood')}</td>
+  </tr>`).join('');
+}
+
+// ── NUTRITION ─────────────────────────────────────────────────────────────
+async function saveNutrition() {
+  const item = {
+    date: document.getElementById('nut-date').value,
+    meal: document.getElementById('nut-meal').value,
+    food: document.getElementById('nut-food').value,
+    calories: parseInt(document.getElementById('nut-cal').value) || null,
+    protein: parseFloat(document.getElementById('nut-protein').value) || null,
+    water: parseInt(document.getElementById('nut-water').value) || null,
+    notes: document.getElementById('nut-notes').value,
+  };
+  if (!item.food) return alert('Please enter what you ate.');
+  await store.add('nutrition', item);
+  document.getElementById('nut-food').value = '';
+  document.getElementById('nut-cal').value = '';
+  document.getElementById('nut-protein').value = '';
+  document.getElementById('nut-water').value = '';
+  document.getElementById('nut-notes').value = '';
+  await renderNutrition();
+}
+function renderNutrition() {
+  const rows = store.get('nutrition');
+  const tb = document.getElementById('nut-table');
+  if (!rows.length) { tb.innerHTML = '<tr><td colspan="7" class="empty">No meals logged yet</td></tr>'; return; }
+  tb.innerHTML = rows.map(r => `<tr>
+    <td>${r.date}</td>
+    <td><span class="badge badge-green">${r.meal}</span></td>
+    <td>${r.food}</td>
+    <td>${r.calories||'—'}</td>
+    <td>${r.protein?r.protein+'g':'—'}</td>
+    <td>${r.water?r.water+' oz':'—'}</td>
+    <td>${delBtn('nutrition',r.id,'renderNutrition')}</td>
+  </tr>`).join('');
+}
+
+// ── NUTRITION RENDER ──────────────────────────────────────────────────────
+async function renderNutrition() {
+  loading('nut-table', 7);
+  const rows = await store.get('nutrition');
+  const tb = document.getElementById('nut-table');
+  if (!rows.length) { tb.innerHTML = '<tr><td colspan="7" class="empty">No meals logged yet</td></tr>'; return; }
+  tb.innerHTML = rows.map(r => `<tr>
+    <td>${r.date}</td>
+    <td><span class="badge badge-green">${r.meal}</span></td>
+    <td>${r.food}</td>
+    <td>${r.calories||'—'}</td>
+    <td>${r.protein?r.protein+'g':'—'}</td>
+    <td>${r.water?r.water+' oz':'—'}</td>
+    <td>${delBtn('nutrition',r.id,'renderNutrition')}</td>
+  </tr>`).join('');
+}
+
+// ── FITNESS ───────────────────────────────────────────────────────────────
+async function saveFitness() {
+  const item = {
+    date: document.getElementById('fit-date').value,
+    type: document.getElementById('fit-type').value,
+    duration: parseInt(document.getElementById('fit-duration').value) || null,
+    exercises: document.getElementById('fit-exercises').value,
+    notes: document.getElementById('fit-notes').value,
+  };
+  await store.add('fitness', item);
+  document.getElementById('fit-duration').value = '';
+  document.getElementById('fit-exercises').value = '';
+  document.getElementById('fit-notes').value = '';
+  await renderFitness();
+  loadPerStats();
+}
+async function renderFitness() {
+  loading('fit-table', 6);
+  const rows = await store.get('fitness');
+  const tb = document.getElementById('fit-table');
+  if (!rows.length) { tb.innerHTML = '<tr><td colspan="6" class="empty">No workouts logged yet</td></tr>'; return; }
+  tb.innerHTML = rows.map(r => `<tr>
+    <td>${r.date}</td>
+    <td><span class="badge badge-green">${r.type}</span></td>
+    <td>${r.duration?r.duration+' min':'—'}</td>
+    <td>${r.exercises||'—'}</td>
+    <td style="max-width:200px">${r.notes||'—'}</td>
+    <td>${delBtn('fitness',r.id,'renderFitness')}</td>
+  </tr>`).join('');
+}
+
+// ── TIME LOG ──────────────────────────────────────────────────────────────
+async function saveTime() {
+  const item = {
+    date: document.getElementById('time-date').value,
+    category: document.getElementById('time-cat').value,
+    hours: parseFloat(document.getElementById('time-hours').value),
+    task: document.getElementById('time-task').value,
+    notes: document.getElementById('time-notes').value,
+  };
+  if (!item.task || !item.hours) return alert('Please enter task and hours.');
+  await store.add('time-log', item);
+  document.getElementById('time-hours').value = '';
+  document.getElementById('time-task').value = '';
+  document.getElementById('time-notes').value = '';
+  await renderTime();
+}
+async function renderTime() {
+  loading('time-table', 6);
+  const rows = await store.get('time-log');
+  const tb = document.getElementById('time-table');
+  if (!rows.length) { tb.innerHTML = '<tr><td colspan="6" class="empty">No time logged yet</td></tr>'; return; }
+  tb.innerHTML = rows.map(r => `<tr>
+    <td>${r.date}</td>
+    <td><span class="badge badge-blue">${r.category}</span></td>
+    <td style="font-weight:600;color:var(--per)">${r.hours}h</td>
+    <td>${r.task}</td>
+    <td style="max-width:200px">${r.notes||'—'}</td>
+    <td>${delBtn('time-log',r.id,'renderTime')}</td>
+  </tr>`).join('');
+}
+
+// ── PERSONAL GOALS ────────────────────────────────────────────────────────
+async function savePerGoal() {
+  const item = {
+    quarter: parseInt(document.getElementById('pg-quarter').value),
+    year: parseInt(document.getElementById('pg-year').value),
+    status: document.getElementById('pg-status').value,
+    goal: document.getElementById('pg-goal').value,
+    notes: document.getElementById('pg-notes').value,
+  };
+  if (!item.goal) return alert('Please enter a goal.');
+  await store.add('per-goals', item);
+  document.getElementById('pg-goal').value = '';
+  document.getElementById('pg-notes').value = '';
+  await renderPerGoals();
+  loadPerStats();
+}
+async function renderPerGoals() {
+  loading('pg-table', 6);
+  const rows = await store.get('per-goals');
+  const tb = document.getElementById('pg-table');
+  if (!rows.length) { tb.innerHTML = '<tr><td colspan="6" class="empty">No personal goals yet</td></tr>'; return; }
+  tb.innerHTML = rows.map(r => `<tr>
+    <td>Q${r.quarter}</td>
+    <td>${r.year}</td>
+    <td style="font-weight:600">${r.goal}</td>
+    <td>${badge(r.status, statusBadge)}</td>
+    <td style="max-width:200px">${r.notes||'—'}</td>
+    <td>${delBtn('per-goals',r.id,'renderPerGoals')}</td>
+  </tr>`).join('');
+}
+
+// ── BOOT ──────────────────────────────────────────────────────────────────
+loadBizStats();
+</script>
+</body>
+</html>
